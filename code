@@ -1,0 +1,48 @@
+# NinjaOne Office365 Update Script
+# Author: Ruben Munoz
+# 10/16/2025
+# This script removes any prior Office365 versions, and installs the new versions. This is done via Office Deployment 
+
+# Set deployment variables
+$Channel = "Current"  # Office update channel
+$Language = "en-us" 
+$ProductID = "ProPlusRetail" # Product ID for Microsoft Office365 apps
+$ExcludeTeamsClassic = $true # Exclude old teams client
+$OdtUrl = "https://download.microsoft.com/download/6c1eeb25-cf8b-41d9-8d0d-cc1dbc032140/officedeploymenttool_18526-20146.exe" # OFfice Deployment Tool URL
+
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 # Force TLS 1.2 for secure downloads
+
+$Root       = "C:\ProgramData\NinjaTemp\O365" # Define directory and file path
+$OdtExe     = Join-Path $Root "ODT.exe"
+$Cfg        = Join-Path $Root "config.xml"
+New-Item -ItemType Directory -Path $Root -Force | Out-Null # Create working dir
+
+# download and install Office Deployment Tool
+Invoke-WebRequest -Uri $OdtUrl -OutFile $OdtExe -UseBasicParsing
+Start-Process -FilePath $OdtExe -ArgumentList "/quiet /extract:$Root" -Wait
+$Setup = Join-Path $Root "setup.exe"
+if (-not (Test-Path $Setup)) { throw "setup.exe not found after ODT extract" } # Verify setup.exe was extracted
+
+#config
+$teamsLine = if ($ExcludeTeamsClassic) { '  <ExcludeApp ID="Teams" />' } else { "" } 
+# XML configuration for Office365 Installation
+$config = @"
+<Configuration> 
+  <Remove All="True" />
+  <Add OfficeClientEdition="64" Channel="$Channel" AllowCdnFallback="TRUE">
+    <Product ID="$ProductID">
+$teamsLine 
+      <Language ID="$Language" />
+      <Property Name="AUTOACTIVATE" Value="1" />
+    </Product>
+  </Add>
+  <RemoveMSI All="True" />
+  <Display Level="None" AcceptEULA="True" />
+</Configuration> 
+"@ 
+Set-Content -Path $Cfg -Value $config -Encoding UTF8 # Write XML config to file
+
+# Run installer with config file
+Start-Process -FilePath $Setup -ArgumentList "/configure $Cfg" -Wait
+
+
