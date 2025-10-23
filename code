@@ -1,48 +1,45 @@
 # NinjaOne Office365 Update Script
 # Author: Ruben Munoz
 # 10/16/2025
-# This script removes any prior Office365 versions, and installs the new versions. This is done via Office Deployment 
 
-# Set deployment variables
-$Channel = "Current"  # Office update channel
-$Language = "en-us" 
-$ProductID = "ProPlusRetail" # Product ID for Microsoft Office365 apps
-$ExcludeTeamsClassic = $true # Exclude old teams client
-$OdtUrl = "https://download.microsoft.com/download/6c1eeb25-cf8b-41d9-8d0d-cc1dbc032140/officedeploymenttool_18526-20146.exe" # OFfice Deployment Tool URL
+# Variables
+$Channel = "Current"
+$Language = "en-us"
+$ProductID = "O365ProPlusRetail"   # <- correct Product ID
+$ExcludeTeamsClassic = $true
+$OdtDownloadPage = "https://www.microsoft.com/en-us/download/details.aspx?id=49117" # reference page
 
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 # Force TLS 1.2 for secure downloads
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Root       = "C:\ProgramData\NinjaTemp\O365" # Define directory and file path
-$OdtExe     = Join-Path $Root "ODT.exe"
-$Cfg        = Join-Path $Root "config.xml"
-New-Item -ItemType Directory -Path $Root -Force | Out-Null # Create working dir
+$Root   = "C:\ProgramData\NinjaTemp\O365"
+$OdtExe = Join-Path $Root "ODT.exe"
+$Cfg    = Join-Path $Root "config.xml"
+New-Item -ItemType Directory -Path $Root -Force | Out-Null
 
-# download and install Office Deployment Tool
-Invoke-WebRequest -Uri $OdtUrl -OutFile $OdtExe -UseBasicParsing
+# Download the latest ODT 
+Invoke-WebRequest -Uri "https://officecdn.microsoft.com/pr/wsus/setup.exe" -OutFile $OdtExe -UseBasicParsing
+
 Start-Process -FilePath $OdtExe -ArgumentList "/quiet /extract:$Root" -Wait
 $Setup = Join-Path $Root "setup.exe"
-if (-not (Test-Path $Setup)) { throw "setup.exe not found after ODT extract" } # Verify setup.exe was extracted
+if (-not (Test-Path $Setup)) { throw "setup.exe not found after ODT extract" }
 
-#config
-$teamsLine = if ($ExcludeTeamsClassic) { '  <ExcludeApp ID="Teams" />' } else { "" } 
-# XML configuration for Office365 Installation
+$teamsLine = if ($ExcludeTeamsClassic) { '      <ExcludeApp ID="Teams" />' } else { "" }
+
 $config = @"
-<Configuration> 
+<Configuration>
   <Remove All="True" />
   <Add OfficeClientEdition="64" Channel="$Channel" AllowCdnFallback="TRUE">
     <Product ID="$ProductID">
-$teamsLine 
+$teamsLine
       <Language ID="$Language" />
       <Property Name="AUTOACTIVATE" Value="1" />
+      <Property Name="FORCEAPPSHUTDOWN" Value="TRUE" />
     </Product>
   </Add>
   <RemoveMSI All="True" />
   <Display Level="None" AcceptEULA="True" />
-</Configuration> 
-"@ 
-Set-Content -Path $Cfg -Value $config -Encoding UTF8 # Write XML config to file
+</Configuration>
+"@
+Set-Content -Path $Cfg -Value $config -Encoding UTF8
 
-# Run installer with config file
-Start-Process -FilePath $Setup -ArgumentList "/configure $Cfg" -Wait
-
-
+Start-Process -FilePath $Setup -ArgumentList "/configure `"$Cfg`"" -Wait
